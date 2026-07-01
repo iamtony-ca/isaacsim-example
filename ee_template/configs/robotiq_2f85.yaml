@@ -1,0 +1,46 @@
+# Reference config — reproduces ur16e_2f85_actuated.usd via the module-tree driver.
+# This is the "green path" that proves the template: a simple 2-finger revolute gripper
+# expressed in the general module-tree schema.
+name: robotiq_2f85
+
+# ---- FIXED substrate (never edited per-gripper) ----
+# paths are relative to the test_ws/ repo root — run all commands from there.
+arm_base:   assets/ur16e_gripper_base.usd   # UR16e arm only, articulated, standing
+artic_root: /ur16e                 # new module links become siblings of arm links here
+mount_link: /ur16e/wrist_3_link    # body0 for tools that bolt straight to the flange
+out:        ee_template/out/ur16e_2f85_actuated.usd
+
+# ---- SOURCE geometry ----
+# Skip STEP->USD + attach because we already have the rigidly-attached Step-2 output.
+# (Future: replace `rigged_usd` with `step:` to run the headless CAD-import+attach stages.)
+source:
+  rigged_usd:   assets/ur16e_2f85_rigged_my.usd
+  tool_frame:   /ur16e/wrist_3_link/flange/tool0/gripper_2f85_tool   # gripper-local frame (mm, +Z=approach)
+
+# ---- MODULE TREE ----
+# Each module = one moving (or fixed) link. `parent` is mount_link or another module name.
+# Solids not claimed by any module stay as parent geometry (e.g. the gripper base -> wrist_3_link).
+modules:
+  - name: finger_left
+    parent: mount_link
+    select: { by: centroid_x, parent_tag: "7912_", cx_min: -1.0e9, cx_max: -10.0 }
+    joint:
+      type: revolute
+      axis_local: [0, 1, 0]     # gripper-local Y (pin perpendicular to X-Z spread plane)
+      axis_sign: +1
+      pivot_mm: [-13, 0, 58]
+      limits: [0, 25]        # deg (folded back from GUI Play tuning; was 45)
+    body:  { mass_kg: 0.1, collider: convexHull }
+    drive: { type: acceleration, stiffness: 2.0e4, damping: 2.0e3, max_force: 1.0e3, target: 0 }
+
+  - name: finger_right
+    parent: mount_link
+    select: { by: centroid_x, parent_tag: "7912_", cx_min: 10.0, cx_max: 1.0e9 }
+    joint:
+      type: revolute
+      axis_local: [0, 1, 0]
+      axis_sign: -1             # mirror of left -> synchronized close
+      pivot_mm: [13, 0, 58]
+      limits: [0, 25]        # deg (folded back from GUI Play tuning; was 45)
+    body:  { mass_kg: 0.1, collider: convexHull }
+    drive: { type: acceleration, stiffness: 2.0e4, damping: 2.0e3, max_force: 1.0e3, target: 0 }

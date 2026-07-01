@@ -1,0 +1,77 @@
+# STUB / DESIGN TARGET — the real end-effector this template must scale to.
+# Y-shaped OnRobot Dual Quick Changer: one flange mount branches into two tool arms,
+# each = HEX F/T sensor (passive) -> {2FG14 parallel gripper | screwdriver}.
+# Shows every schema feature the 2F-85 case does NOT exercise:
+#   * tree topology (parent = another module, not just mount_link)
+#   * fixed modules (quick-changer body, F/T sensors, damper) with no joint
+#   * prismatic joints (2FG14 parallel fingers) alongside revolute (screwdriver spindle)
+#   * semantic frames (ft_sensor / tcp) exposed for ROS / control
+#   * assembly_node selection (robust for complex assemblies vs centroid thresholds)
+#
+# NOT yet runnable — the driver's prismatic/fixed/assembly_node handlers are stubbed.
+# This file pins the contract the generalization must satisfy.
+name: onrobot_dualtool
+
+# paths relative to test_ws/ repo root.
+arm_base:   assets/ur16e_gripper_base.usd
+artic_root: /ur16e
+mount_link: /ur16e/wrist_3_link
+out:        ee_template/out/ur16e_dualtool_actuated.usd
+
+source:
+  # A monolithic assembled STEP -> convert headless, then split by named assembly nodes.
+  step:       cad/assemblies/UR16e_dualtool_assembly.step   # (placeholder path)
+  tool_frame: /ur16e/wrist_3_link/flange/tool0/dual_quick_changer
+
+modules:
+  # ---- shared trunk ----
+  - name: qc_body                       # Y quick-changer body: rigid, part of the flange
+    parent: mount_link
+    select: { by: assembly_node, node: "DualQuickChanger" }
+    joint:  { type: fixed }
+    body:   { mass_kg: 0.4, collider: convexHull }
+
+  - name: damper                        # mechanical damper: model rigid for now (compliant later)
+    parent: qc_body
+    select: { by: assembly_node, node: "Damper" }
+    joint:  { type: fixed }
+    body:   { mass_kg: 0.2, collider: convexHull }
+
+  # ---- branch A: F/T sensor -> 2FG14 parallel gripper ----
+  - name: ft_sensor_a
+    parent: qc_body
+    select: { by: assembly_node, node: "HEX_A" }
+    joint:  { type: fixed }
+    frame:  { semantic: ft_sensor }     # expose as a sensor frame (ROS wrench)
+    body:   { mass_kg: 0.25, collider: convexHull }
+
+  - name: fg14_a_left                   # 2FG14 fingers translate -> PRISMATIC
+    parent: ft_sensor_a
+    select: { by: assembly_node, node: "2FG14_A_FingerL" }
+    joint:  { type: prismatic, axis_local: [1, 0, 0], axis_sign: +1, origin_mm: [0, 0, 40], limits_mm: [0, 14] }
+    body:   { mass_kg: 0.05, collider: convexHull }
+    drive:  { type: acceleration, stiffness: 1.0e5, damping: 1.0e3, max_force: 140, target: 0 }
+
+  - name: fg14_a_right
+    parent: ft_sensor_a
+    select: { by: assembly_node, node: "2FG14_A_FingerR" }
+    joint:  { type: prismatic, axis_local: [1, 0, 0], axis_sign: -1, origin_mm: [0, 0, 40], limits_mm: [0, 14] }
+    body:   { mass_kg: 0.05, collider: convexHull }
+    drive:  { type: acceleration, stiffness: 1.0e5, damping: 1.0e3, max_force: 140, target: 0 }
+    frame:  { semantic: tcp }           # grasp TCP of branch A
+
+  # ---- branch B: F/T sensor -> screwdriver ----
+  - name: ft_sensor_b
+    parent: qc_body
+    select: { by: assembly_node, node: "HEX_B" }
+    joint:  { type: fixed }
+    frame:  { semantic: ft_sensor }
+    body:   { mass_kg: 0.25, collider: convexHull }
+
+  - name: screwdriver_bit               # spindle spins continuously -> REVOLUTE (no upper limit)
+    parent: ft_sensor_b
+    select: { by: assembly_node, node: "Screwdriver_Bit" }
+    joint:  { type: revolute, axis_local: [0, 0, 1], axis_sign: +1, pivot_mm: [0, 0, 0], limits: [0, 0], continuous: true }
+    body:   { mass_kg: 0.1, collider: convexHull }
+    drive:  { type: velocity, stiffness: 0, damping: 5.0e2, max_force: 50, target: 0 }
+    frame:  { semantic: tcp }           # screw TCP of branch B

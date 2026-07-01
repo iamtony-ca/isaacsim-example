@@ -1,0 +1,35 @@
+# ── Lean repo: commit source (scripts, configs, urdf, md, images) only. ──
+# Large CAD sources and generated USD stages are NOT committed — see cad/README.md
+# and assets/README.md for how to obtain / regenerate them.
+
+# Claude Code session/local state
+.claude/
+CLAUDE.md
+
+# Python
+__pycache__/
+*.pyc
+
+# CAD sources (100s of MB; vendor downloads — see cad/README.md)
+cad/*
+!cad/README.md
+*.step
+*.stp
+*.STEP
+*.STP
+# CAD dirs still owned by 'ubuntu' at repo root (couldn't relocate without sudo):
+/2f-85-grippers-robotiq/
+/UR16e.step/
+
+# Generated USD stages (regenerate via the pipeline — see assets/README.md)
+assets/*
+!assets/README.md
+*.usd
+*.usda
+ee_template/out/
+
+# Generated URDF-import USD (keep the source robot/ur16e.urdf, not its USD output)
+robot/ur16e/
+
+# misc
+*.bak
