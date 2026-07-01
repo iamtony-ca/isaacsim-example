@@ -75,10 +75,20 @@ def select_solids(ctx, sel):
                 out.append(p)
         return out
     if by == "assembly_node":
-        # TODO(generalize): return all Mesh prims under the named STEP assembly subtree.
-        # Robust for complex multi-tool assemblies (2FG14 vs screwdriver vs F/T sensor)
-        # where centroid thresholds cannot cleanly separate branches.
-        raise NotImplementedError("select.by=assembly_node not implemented yet (dual-tool path)")
+        # Robust split for complex multi-tool assemblies: pick a named assembly node and take
+        # its own solids. Default = the node's DIRECT Mesh children (sub-tools live under child
+        # Xform nodes and are claimed by their own modules). `subtree: true` grabs all descendant
+        # meshes (for a leaf part whose solids are nested a few levels deep).
+        node_name = sel["node"]
+        node = None
+        for p in Usd.PrimRange(ctx.tool):
+            if p.GetName() == node_name:
+                node = p; break
+        if node is None:
+            die("assembly_node: node '%s' not found under %s" % (node_name, ctx.tool.GetPath()))
+        if sel.get("subtree", False):
+            return [p for p in Usd.PrimRange(node) if p.GetTypeName() == "Mesh"]
+        return [c for c in node.GetChildren() if c.GetTypeName() == "Mesh"]
     die("unknown select.by: " + by)
 
 
@@ -130,6 +140,14 @@ def build_joint(ctx, module, body1_path):
     if jtype == "fixed":
         j = UsdPhysics.FixedJoint.Define(st, jpath)
         j.CreateBody0Rel().SetTargets([body0_path]); j.CreateBody1Rel().SetTargets([body1_path])
+        # weld at the current relative pose: joint frame = body1 origin, expressed in body0 frame.
+        Mb0 = UsdGeom.Xformable(st.GetPrimAtPath(body0_path)).ComputeLocalToWorldTransform(ctx.tc)
+        Mb1 = UsdGeom.Xformable(st.GetPrimAtPath(body1_path)).ComputeLocalToWorldTransform(ctx.tc)
+        rel = Mb0.GetInverse() * Mb1
+        j.CreateLocalPos0Attr().Set(Gf.Vec3f(rel.ExtractTranslation()))
+        j.CreateLocalRot0Attr().Set(Gf.Quatf(rel.ExtractRotationQuat()))
+        j.CreateLocalPos1Attr().Set(Gf.Vec3f(0, 0, 0))
+        j.CreateLocalRot1Attr().Set(Gf.Quatf(1, 0, 0, 0))
         return jpath
 
     # revolute / prismatic share anchor math; differ in joint prim + unit of limits/drive.
@@ -208,9 +226,13 @@ def main(cfg_path):
     for module in cfg["modules"]:             # stage 2 (pure pxr)
         solids = select_solids(ctx, module["select"]) if "select" in module else []
         lp = build_link(ctx, module, solids)
-        jp = build_joint(ctx, module, lp)
-        print("  module %-14s solids=%d joint=%s parent=%s"
-              % (module["name"], len(solids), module.get("joint", {}).get("type"), module["parent"]))
+        build_joint(ctx, module, lp)
+        sem = module.get("frame", {}).get("semantic")
+        if sem:                                # expose a semantic frame (ROS wrench / TCP) as a tag
+            st.GetPrimAtPath(lp).CreateAttribute("ee:frame_semantic", Sdf.ValueTypeNames.Token).Set(sem)
+        print("  module %-14s solids=%d  joint=%-9s parent=%-12s %s"
+              % (module["name"], len(solids), module.get("joint", {}).get("type"),
+                 module["parent"], ("frame=" + sem) if sem else ""))
 
     ok = stage_verify(st, cfg)                # stage 3
     out = cfg["out"]; os.makedirs(os.path.dirname(out), exist_ok=True)

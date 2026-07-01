@@ -356,11 +356,14 @@ PYTHONPATH=$PKG LD_LIBRARY_PATH=$PKG/bin /isaac-sim/python.sh \
 
 ### 8d. 검증된 현황 · 남은 일
 - ✅ rig(L1): 링크·강체·콜라이더·조인트·드라이브 / `joint.type` revolute·prismatic·fixed /
-  `select.by=centroid_x` / 구조검증. **2F-85 산출물이 §6 스크립트와 kinematic 동일**.
-- ✅ `verify_sim.py`(L2): 헤드리스 개폐 거동 assert, 2F-85 PASS.
-- 🔲 `select.by=assembly_node`(복합 다중툴 분할) · `source.step`(헤드리스 CAD 임포트로 Step 0·2 대체)
-  — **모듈형 다중 툴**(예: OnRobot 듀얼 퀵체인저 → 각 가지에 HEX F/T + 2FG14(prismatic) 또는
-  스크루드라이버(revolute)) 대응에 필요. 실제 조립 STEP이 준비되면 붙인다.
+  `select.by=centroid_x`·`assembly_node` / 트리 위상 / `frame.semantic` / 구조검증.
+  **2F-85 산출물이 §6 스크립트와 kinematic 동일**.
+- ✅ `verify_sim.py`(L2): 조인트타입 인식(°/mm) 헤드리스 거동 assert — **2F-85 + 합성 듈툴 PASS**.
+- ✅ **모듈형 다중 툴 일반화 검증**(합성): `ee_template/tests/make_dummy_dualtool.py`가 Y-툴체인저
+  (QuickChanger→{Damper, HEX_A→2FG14 L/R, HEX_B→Screwdriver})를 만들고
+  `configs/dummy_dualtool.yaml`로 fixed×4+prismatic×2+revolute×1+센서프레임을 build→verify.
+- 🔲 `source.step`(헤드리스 CAD 임포트로 Step 0·2 대체) — 실제 OnRobot 듈툴 STEP이 준비되면
+  `configs/onrobot_dualtool.yaml`에 연결(2FG14=prismatic / 스크루드라이버=revolute 스핀들).
 
 > 설계 전환 요점: 복합 엔드이펙터는 "덩어리 STEP을 centroid로 분할"이 아니라 **카탈로그 부품을
 > 각각 1회 리깅한 모듈 USD로 만들어 트리 config로 조합**하는 쪽이 재사용·확장에 유리. `ee_template/`이

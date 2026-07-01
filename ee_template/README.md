@@ -22,8 +22,11 @@ ee_template/
   build_ee.py            드라이버(고정 코드). 스테이지: convert→attach→rig→구조검증
   verify_sim.py          헤드리스 거동 검증(L2/Kit): 조인트 개폐 구동 + assert
   configs/
-    robotiq_2f85.yaml    ✅ 동작 레퍼런스(2지 revolute). kinematic 동일 + 헤드리스 sim PASS
-    onrobot_dualtool.yaml 🔷 설계 타깃(Y툴체인저+2FG14+스크루드라이버). 스키마 계약 = 미구현
+    robotiq_2f85.yaml     ✅ 동작 레퍼런스(2지 revolute). kinematic 동일 + 헤드리스 sim PASS
+    dummy_dualtool.yaml   ✅ 일반화 검증용(합성 Y-툴체인저): fixed+prismatic+revolute+센서프레임
+    onrobot_dualtool.yaml 🔷 실제 타깃(OnRobot 듈툴). 동일 스키마, STEP 대기 중
+  tests/
+    make_dummy_dualtool.py  합성 듈툴 어셈블리 생성기(dummy_dualtool.yaml의 fixture)
   modules/               (향후) 카탈로그 부품별 리깅 USD 라이브러리
   out/                   산출물
 ```
@@ -50,20 +53,26 @@ modules:
 3. 드라이버 실행 → `out/ur16e_<name>_actuated.usd`.
 4. 검증(현재=구조 assert / 향후=헤드리스 시뮬 개폐 assert).
 
-## 현재 구현 상태 (골격)
+## 현재 구현 상태
 | 기능 | 상태 |
 |---|---|
 | rig 스테이지(pure pxr): 링크·강체·콜라이더·조인트·드라이브 | ✅ |
-| joint.type = revolute / prismatic / fixed | ✅ |
-| select.by = centroid_x | ✅ |
+| joint.type = revolute / prismatic / fixed | ✅ 셋 다 dummy 검증 |
+| select.by = centroid_x | ✅ (2F-85) |
+| **select.by = assembly_node** (복합 다중툴 분할, 트리 위상) | ✅ dummy 듈툴 검증 |
+| frame.semantic 태그 저작(ft_sensor / tcp) | ✅ (ROS 노출은 4b) |
 | verify = 구조 검증(articulation root 1개, 중첩 강체 없음) | ✅ |
-| **verify_sim = 헤드리스 거동**(개폐 수렴·이동·무폭발 assert; L2/Kit) | ✅ 2F-85 PASS |
-| **select.by = assembly_node** (복합 다중툴 분할) | 🔲 미구현 — 듀얼툴 필수 |
+| **verify_sim = 헤드리스 거동**(조인트타입 인식 °/mm, 수렴·이동·무폭발 assert) | ✅ 2F-85 + dummy PASS |
 | **source.step** (헤드리스 CAD 임포트+부착; L2/Kit) | 🔲 미구현 — 지금은 `rigged_usd` 재사용 |
-| verify_sim 렌더 PNG 스냅샷(옵션 시각확인) | 🔲 미구현(numeric assert만) |
-| frame.semantic → ROS 프레임/센서 노출 | 🔲 미구현(4b ROS 브리지에서) |
+| verify_sim 렌더 PNG 스냅샷(옵션 시각확인) | 🔲 numeric assert만 |
+| frame.semantic → 실제 ROS 프레임/센서 퍼블리시 | 🔲 4b ROS 브리지 |
 
-## 듀얼툴까지 남은 일 (우선순위)
-1. `select.by=assembly_node` — STEP 어셈블리 서브트리 이름으로 분할(centroid보다 견고).
-2. `source.step` — Kit 헤드리스 CAD 컨버터로 STEP→USD+tool0 부착(GUI Step 0·2 대체).
-3. `verify` 헤드리스 시뮬 — 눈대중 튜닝을 자동 assert로.
+> **더미로 일반화 검증**: 실제 OnRobot 듈툴 STEP이 없어 `tests/make_dummy_dualtool.py`가
+> 합성 Y-툴체인저(QuickChanger→{Damper, HEX_A→{2FG14 L/R}, HEX_B→Screwdriver})를 만든다.
+> `configs/dummy_dualtool.yaml`로 fixed×4 + prismatic×2 + revolute×1 + 센서프레임을 build→verify.
+> ⚠️ 더미 규약: tool_frame은 CAD처럼 **mm 공간 + 0.001 스케일**이어야 `pivot_mm/origin_mm`가 맞음.
+
+## 남은 일 (실제 듈툴)
+1. `source.step` — Kit 헤드리스 CAD 컨버터로 STEP→USD + tool0 부착(GUI Step 0·2 대체).
+   실제 OnRobot 조립 STEP이 준비되면 `configs/onrobot_dualtool.yaml`에 연결.
+2. verify_sim 렌더 PNG 스냅샷(옵션) · frame.semantic → ROS(4b).

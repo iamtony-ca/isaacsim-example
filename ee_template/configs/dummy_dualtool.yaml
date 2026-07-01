@@ -1,0 +1,66 @@
+# RUNNABLE dummy — validates the generalized pipeline (assembly_node split, tree topology,
+# fixed+prismatic+revolute joints, semantic frames) on a SYNTHETIC dual-tool assembly.
+# Fixture: ee_template/tests/make_dummy_dualtool.py -> assets/ur16e_dummy_dualtool.usd.
+# (The real OnRobot case is configs/onrobot_dualtool.yaml — same schema, awaiting its STEP.)
+name: dummy_dualtool
+
+arm_base:   assets/ur16e_gripper_base.usd
+artic_root: /ur16e
+mount_link: /ur16e/wrist_3_link
+out:        ee_template/out/ur16e_dummy_dualtool_actuated.usd
+
+source:
+  rigged_usd: assets/ur16e_dummy_dualtool.usd
+  tool_frame: /ur16e/wrist_3_link/flange/tool0/dual_tool
+
+# Tree: QuickChanger -> {Damper, HEX_A -> {FG14_A_L/R}, HEX_B -> Screwdriver}.
+# Parents must be listed before their children.
+modules:
+  - name: qc_body
+    parent: mount_link
+    select: { by: assembly_node, node: QuickChanger }
+    joint:  { type: fixed }
+    body:   { mass_kg: 0.4, collider: convexHull }
+
+  - name: damper
+    parent: qc_body
+    select: { by: assembly_node, node: Damper }
+    joint:  { type: fixed }
+    body:   { mass_kg: 0.2, collider: convexHull }
+
+  - name: ft_a
+    parent: qc_body
+    select: { by: assembly_node, node: HEX_A }
+    joint:  { type: fixed }
+    frame:  { semantic: ft_sensor }
+    body:   { mass_kg: 0.25, collider: convexHull }
+
+  - name: fg14_a_left                 # parallel finger -> PRISMATIC (mm travel)
+    parent: ft_a
+    select: { by: assembly_node, node: FG14_A_L }
+    joint:  { type: prismatic, axis_local: [1, 0, 0], axis_sign: +1, origin_mm: [60, 0, 85], limits_mm: [0, 14] }
+    body:   { mass_kg: 0.05, collider: convexHull }
+    drive:  { type: acceleration, stiffness: 1.0e+5, damping: 1.0e+3, max_force: 140, target: 0 }
+
+  - name: fg14_a_right
+    parent: ft_a
+    select: { by: assembly_node, node: FG14_A_R }
+    joint:  { type: prismatic, axis_local: [1, 0, 0], axis_sign: -1, origin_mm: [30, 0, 85], limits_mm: [0, 14] }
+    body:   { mass_kg: 0.05, collider: convexHull }
+    drive:  { type: acceleration, stiffness: 1.0e+5, damping: 1.0e+3, max_force: 140, target: 0 }
+    frame:  { semantic: tcp }
+
+  - name: ft_b
+    parent: qc_body
+    select: { by: assembly_node, node: HEX_B }
+    joint:  { type: fixed }
+    frame:  { semantic: ft_sensor }
+    body:   { mass_kg: 0.25, collider: convexHull }
+
+  - name: screwdriver_bit             # spindle -> REVOLUTE (position-driven here for verify_sim;
+    parent: ft_b                      #  a continuous velocity spindle is shown in onrobot_dualtool.yaml)
+    select: { by: assembly_node, node: Screwdriver }
+    joint:  { type: revolute, axis_local: [0, 0, 1], axis_sign: +1, pivot_mm: [-45, 0, 90], limits: [0, 90] }
+    body:   { mass_kg: 0.1, collider: convexHull }
+    drive:  { type: acceleration, stiffness: 2.0e+4, damping: 2.0e+3, max_force: 1.0e+3, target: 0 }
+    frame:  { semantic: tcp }
